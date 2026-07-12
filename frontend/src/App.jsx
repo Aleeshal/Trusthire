@@ -1,47 +1,19 @@
 import { useState } from "react";
 import { Link2, FileText, ShieldCheck, ShieldAlert, ShieldX, ArrowRight, Loader2, Shield } from "lucide-react";
 
-const MOCK_RESULTS = [
-  {
-    score: 88,
-    verdict: "Likely genuine",
-    tone: "safe",
-    signals: [
-      { ok: true, text: "Company domain registered over 3 years ago" },
-      { ok: true, text: "Job description is specific and role-appropriate" },
-      { ok: true, text: "No upfront payment or personal banking info requested" },
-      { ok: false, text: "Salary range is broader than typical for this role" },
-    ],
-  },
-  {
-    score: 34,
-    verdict: "High risk",
-    tone: "danger",
-    signals: [
-      { ok: false, text: "Company domain registered 12 days ago" },
-      { ok: false, text: "Requests bank details before any interview" },
-      { ok: false, text: "Vague job description, generic across postings" },
-      { ok: true, text: "Company name matches a real registered entity" },
-    ],
-  },
-  {
-    score: 61,
-    verdict: "Use caution",
-    tone: "warn",
-    signals: [
-      { ok: true, text: "Company has an active, verifiable web presence" },
-      { ok: false, text: "Listing reposted 6 times in 30 days" },
-      { ok: false, text: "No named hiring contact or team" },
-      { ok: true, text: "Compensation aligns with market rate" },
-    ],
-  },
-];
-
 const TONES = {
   safe: { grad: ["#34D399", "#22D3EE"], text: "text-emerald-400", icon: ShieldCheck },
   warn: { grad: ["#FBBF24", "#FB923C"], text: "text-amber-400", icon: ShieldAlert },
   danger: { grad: ["#F87171", "#DC2626"], text: "text-rose-400", icon: ShieldX },
 };
+
+const verdictToTone = (verdict) => {
+  if (verdict === "Likely genuine") return "safe";
+  if (verdict === "Use caution") return "warn";
+  return "danger";
+};
+
+const API_URL = "http://localhost:8000/analyze";
 
 function Gauge({ score, tone }) {
   const { grad } = TONES[tone];
@@ -79,19 +51,62 @@ function Gauge({ score, tone }) {
 
 export default function TrustHire() {
   const [mode, setMode] = useState("url");
-  const [input, setInput] = useState("");
+  const [urlInput, setUrlInput] = useState("");
+  const [textInput, setTextInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
+  const [error, setError] = useState(null);
 
-  const analyze = () => {
+  const analyze = async () => {
+    const input = mode === "url" ? urlInput : textInput;
     if (!input.trim()) return;
-    setLoading(true);
     setResult(null);
-    setTimeout(() => {
-      const pick = MOCK_RESULTS[Math.floor(Math.random() * MOCK_RESULTS.length)];
-      setResult(pick);
+    setError(null);
+
+    if (mode === "text" && /^https?:\/\//i.test(input.trim())) {
+      setError("That looks like a URL. Switch to the URL tab, or paste the actual job description text here.");
+      return;
+    }
+    if (mode === "text" && input.trim().length < 40) {
+      setError("That's too short to analyze. Paste the full job description, not just a fragment.");
+      return;
+    }
+    if (mode === "url") {
+      try {
+        new URL(input.trim());
+      } catch {
+        setError("That doesn't look like a valid URL. Make sure it starts with http:// or https://");
+        return;
+      }
+    }
+
+    setLoading(true);
+
+    try {
+      const body = mode === "url" ? { url: input } : { text: input };
+      const res = await fetch(API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+
+      if (data.error) {
+        setError(data.error);
+      } else {
+        setResult({
+          score: data.trust_score,
+          verdict: data.verdict,
+          tone: verdictToTone(data.verdict),
+          signals: data.signals || [],
+          source: data.source,
+        });
+      }
+    } catch (e) {
+      setError("Could not reach the backend. Is the server running?");
+    } finally {
       setLoading(false);
-    }, 1400);
+    }
   };
 
   const tone = result ? TONES[result.tone] : null;
@@ -118,7 +133,7 @@ export default function TrustHire() {
             Is this job real?
           </h1>
           <p className="text-slate-400 text-base max-w-sm">
-            Paste a listing URL or the job text. TrustHire checks the signals scams usually miss.
+            Submit a listing URL or description. TrustHire flags the patterns most job scams share.
           </p>
         </div>
 
@@ -144,15 +159,16 @@ export default function TrustHire() {
 
           {mode === "url" ? (
             <input
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
+              value={urlInput}
+              onChange={(e) => setUrlInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") analyze(); }}
               placeholder="https://company.com/careers/job-listing"
               className="w-full border border-white/10 bg-white/[0.04] rounded-lg px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500/50"
             />
           ) : (
             <textarea
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
+              value={textInput}
+              onChange={(e) => setTextInput(e.target.value)}
               placeholder="Paste the full job description here..."
               rows={5}
               className="w-full border border-white/10 bg-white/[0.04] rounded-lg px-4 py-3 text-sm text-white placeholder-slate-500 resize-none focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500/50"
@@ -161,7 +177,7 @@ export default function TrustHire() {
 
           <button
             onClick={analyze}
-            disabled={loading || !input.trim()}
+            disabled={loading || !(mode === "url" ? urlInput : textInput).trim()}
             className="mt-4 w-full flex items-center justify-center gap-2 text-white font-semibold py-3 rounded-lg transition disabled:opacity-30 hover:brightness-110"
             style={{ background: "linear-gradient(90deg,#2563EB,#06B6D4)", boxShadow: "0 0 24px rgba(37,99,235,0.35)" }}
           >
@@ -176,6 +192,12 @@ export default function TrustHire() {
             )}
           </button>
         </div>
+
+        {error && (
+          <div className="mt-6 rounded-2xl border border-rose-500/20 bg-rose-500/[0.05] backdrop-blur-xl p-4 text-sm text-rose-300 text-center">
+            {error}
+          </div>
+        )}
 
         {result && (
           <div className="mt-6 rounded-2xl border border-white/10 bg-white/[0.03] backdrop-blur-xl p-6 shadow-2xl animate-[fadeIn_0.4s_ease]">
@@ -202,7 +224,9 @@ export default function TrustHire() {
         )}
 
         <p className="text-center text-xs text-slate-600 mt-8">
-          Demo mode — results are simulated. Live analysis coming soon.
+          {result?.source === "rule-based fallback (AI analysis unavailable)"
+            ? "AI temporarily unavailable — showing rule-based analysis only."
+            : "Live analysis powered by TrustHire's detection engine."}
         </p>
       </div>
     </div>

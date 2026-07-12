@@ -42,7 +42,9 @@ def check_scam_keywords(text):
             found.append({"ok": False, "text": f"Listing mentions '{kw}', a common scam pattern"})
     return found
 
-def check_content_length(text):
+def check_content_length(text, js_warning):
+    if js_warning:
+        return {"ok": None, "text": "This page appears to load content via JavaScript — limited analysis available. Try pasting the job text directly instead."}
     if not text or len(text.strip()) < 200:
         return {"ok": False, "text": "Job description is unusually short or vague"}
     return {"ok": True, "text": "Job description has reasonable detail"}
@@ -50,11 +52,21 @@ def check_content_length(text):
 def generate_signals(scraped_data):
     signals = []
     has_url = bool(scraped_data.get("url_provided"))
+    js_warning = bool(scraped_data.get("js_rendered_warning"))
+
     domain_signal = check_domain_age(scraped_data.get("domain_created"), has_url)
     if domain_signal:
         signals.append(domain_signal)
-    signals.append(check_content_length(scraped_data.get("text", "")))
+
+    content_signal = check_content_length(scraped_data.get("text", ""), js_warning)
+    if content_signal["ok"] is not None:
+        signals.append(content_signal)
+    else:
+        signals.append({"ok": False, "text": content_signal["text"]})
+
     signals.extend(check_scam_keywords(scraped_data.get("text", "")))
+
     if has_url and scraped_data.get("whois_error"):
         signals.append({"ok": False, "text": "Domain information could not be verified"})
+
     return signals
