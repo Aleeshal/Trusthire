@@ -161,4 +161,6 @@ npm run dev
 ## Author
 
 **Aleesha Ghazanfar**
-BS Computer Science, COMSATS University Islamabad — Class of 2027
+Backend & DevOps | Flutter Developer
+BS Computer Science, COMSATS University Islamabad 
+
