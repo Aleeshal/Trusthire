@@ -18,6 +18,14 @@ def _extract_json(text):
             text = brace_match.group(0)
     return json.loads(text)
 
+def _verdict_from_score(score):
+    if score >= 75:
+        return "Likely genuine"
+    elif score >= 45:
+        return "Use caution"
+    else:
+        return "High risk"
+
 def _call_llm(scraped_data):
     prompt = f"""You are a job scam detector. Analyze this website data and respond with ONLY valid JSON, no markdown, no explanation outside the JSON.
 
@@ -28,7 +36,7 @@ Registrar: {scraped_data.get('registrar')}
 Content: {scraped_data.get('text', '')[:2500]}
 
 Respond in exactly this JSON format:
-{{"trust_score": 7, "red_flags": ["flag1", "flag2"], "verdict": "Legit"}}"""
+{{"trust_score": 7, "red_flags": ["flag1", "flag2"]}}"""
 
     try:
         response = requests.post(
@@ -71,7 +79,7 @@ def analyze_site(scraped_data):
         return {
             "trust_score": fallback_score,
             "signals": rule_signals,
-            "verdict": "Use caution" if fallback_score < 70 else "Likely genuine",
+            "verdict": _verdict_from_score(fallback_score),
             "llm_error": llm_result["error"],
             "source": "rule-based fallback (AI analysis unavailable)",
         }
@@ -88,7 +96,7 @@ def analyze_site(scraped_data):
 
     return {
         "trust_score": final_score,
-        "verdict": llm_result.get("verdict", "Unknown"),
+        "verdict": _verdict_from_score(final_score),
         "signals": combined_signals,
         "source": "AI + rule-based analysis",
     }
