@@ -26,6 +26,12 @@ def _verdict_from_score(score):
     else:
         return "High risk"
 
+FALLBACK_MODELS = [
+    "openrouter/free",
+    "meta-llama/llama-3.3-70b-instruct:free",
+    "qwen/qwen-2.5-7b-instruct:free",
+]
+
 def _call_llm(scraped_data):
     prompt = f"""You are a job scam detector. Analyze this website data and respond with ONLY valid JSON, no markdown, no explanation outside the JSON.
 
@@ -38,35 +44,52 @@ Content: {scraped_data.get('text', '')[:2500]}
 Respond in exactly this JSON format:
 {{"trust_score": 7, "red_flags": ["flag1", "flag2"]}}"""
 
-    try:
-        response = requests.post(
-            "https://openrouter.ai/api/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {os.getenv('OPENROUTER_API_KEY')}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": "openrouter/free",
-                "messages": [{"role": "user", "content": prompt}],
-                "temperature": 0.2,
-            },
-            timeout=20,
-        )
-    except requests.RequestException as e:
-        return {"error": f"Network error calling OpenRouter: {e}"}
+    last_error = None
+    for model in FALLBACK_MODELS:
+        try:
+            response = requests.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {os.getenv('OPENROUTER_API_KEY')}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": model,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "temperature": 0.2,
+                    "max_tokens": 600,
+                    "reasoning": {"enabled": False},
+                },
+                timeout=20,
+            )
+        except requests.RequestException as e:
+            last_error = f"Network error calling OpenRouter ({model}): {e}"
+            continue
 
-    if response.status_code != 200:
-        return {"error": f"OpenRouter returned status {response.status_code}: {response.text[:300]}"}
+        # 429 (rate-limited) or 5xx means this specific model/provider is
+        # unavailable right now - move on to the next candidate instead of
+        # giving up on AI analysis entirely.
+        if response.status_code == 429 or response.status_code >= 500:
+            last_error = f"OpenRouter returned status {response.status_code} for {model}: {response.text[:200]}"
+            continue
 
-    result = response.json()
-    if "choices" not in result:
-        return {"error": f"Unexpected OpenRouter response: {result}"}
+        if response.status_code != 200:
+            last_error = f"OpenRouter returned status {response.status_code} for {model}: {response.text[:300]}"
+            continue
 
-    content = result["choices"][0]["message"]["content"]
-    try:
-        return _extract_json(content)
-    except (json.JSONDecodeError, AttributeError) as e:
-        return {"error": f"Could not parse LLM output as JSON: {e}", "raw": content}
+        result = response.json()
+        if "choices" not in result:
+            last_error = f"Unexpected OpenRouter response for {model}: {result}"
+            continue
+
+        content = result["choices"][0]["message"].get("content", "")
+        try:
+            return _extract_json(content)
+        except (json.JSONDecodeError, AttributeError) as e:
+            last_error = f"Could not parse LLM output as JSON ({model}): {e}"
+            continue
+
+    return {"error": last_error or "All fallback models failed"}
 
 def analyze_site(scraped_data):
     rule_signals = generate_signals(scraped_data)

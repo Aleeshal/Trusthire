@@ -69,4 +69,7 @@ def generate_signals(scraped_data):
     if has_url and scraped_data.get("whois_error"):
         signals.append({"ok": False, "text": "Domain information could not be verified"})
 
+    if scraped_data.get("structured_data_found"):
+        signals.append({"ok": True, "text": "Listing includes verified structured job data (JSON-LD)"})
+
     return signals
