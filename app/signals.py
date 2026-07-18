@@ -49,6 +49,20 @@ def check_content_length(text, js_warning):
         return {"ok": False, "text": "Job description is unusually short or vague"}
     return {"ok": True, "text": "Job description has reasonable detail"}
 
+KNOWN_LEGITIMATE_PLATFORMS = [
+    "greenhouse.io", "lever.co", "myworkdayjobs.com", "workday.com",
+    "smartrecruiters.com", "bamboohr.com", "icims.com", "jobvite.com",
+    "ashbyhq.com", "linkedin.com", "indeed.com", "rozee.pk", "workable.com",
+]
+
+def check_known_platform(domain):
+    if not domain:
+        return None
+    for platform in KNOWN_LEGITIMATE_PLATFORMS:
+        if domain == platform or domain.endswith("." + platform):
+            return {"ok": True, "text": f"Hosted on {platform}, an established hiring platform — scam listings rarely use paid enterprise ATS software"}
+    return None
+
 def generate_signals(scraped_data):
     signals = []
     has_url = bool(scraped_data.get("url_provided"))
@@ -57,6 +71,10 @@ def generate_signals(scraped_data):
     domain_signal = check_domain_age(scraped_data.get("domain_created"), has_url)
     if domain_signal:
         signals.append(domain_signal)
+
+    platform_signal = check_known_platform(scraped_data.get("domain"))
+    if platform_signal:
+        signals.append(platform_signal)
 
     content_signal = check_content_length(scraped_data.get("text", ""), js_warning)
     if content_signal["ok"] is not None:

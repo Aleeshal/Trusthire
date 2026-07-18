@@ -1,51 +1,149 @@
 import { useState } from "react";
-import { Link2, FileText, ShieldCheck, ShieldAlert, ShieldX, ArrowRight, Loader2, Shield } from "lucide-react";
+
+const TOKENS = {
+  paper: "#F1ECDD",
+  paperCard: "#FBF8EF",
+  ink: "#211C13",
+  inkMuted: "#746B58",
+  line: "#CBC0A1",
+  verified: "#2F6B4F",
+  caution: "#A9762E",
+  danger: "#A6392C",
+};
 
 const TONES = {
-  safe: { grad: ["#34D399", "#22D3EE"], text: "text-emerald-400", icon: ShieldCheck },
-  warn: { grad: ["#FBBF24", "#FB923C"], text: "text-amber-400", icon: ShieldAlert },
-  danger: { grad: ["#F87171", "#DC2626"], text: "text-rose-400", icon: ShieldX },
+  safe: { ink: TOKENS.verified, label: "VERIFIED" },
+  warn: { ink: TOKENS.caution, label: "USE CAUTION" },
+  danger: { ink: TOKENS.danger, label: "LIKELY SCAM" },
+  unclear: { ink: TOKENS.caution, label: "COULD NOT VERIFY" },
 };
 
 const verdictToTone = (verdict) => {
   if (verdict === "Likely genuine") return "safe";
   if (verdict === "Use caution") return "warn";
+  if (verdict === "Could not verify") return "unclear";
   return "danger";
 };
 
 const API_URL = "http://localhost:8000/analyze";
 
-function Gauge({ score, tone }) {
-  const { grad } = TONES[tone];
-  const r = 80;
-  const circumference = Math.PI * r;
-  const offset = circumference - (score / 100) * circumference;
+const displayFont = "'Fraunces', serif";
+const monoFont = "'IBM Plex Mono', monospace";
+const bodyFont = "'IBM Plex Sans', sans-serif";
+
+// Subtle paper grain - kept faint on purpose, texture not decoration.
+const GRAIN_BG =
+  "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.045'/%3E%3C/svg%3E\")";
+
+function StampFilter() {
+  // One shared SVG filter that roughens edges - the ink-stamp texture.
   return (
-    <div className="relative w-56 h-32 mx-auto">
-      <svg viewBox="0 0 200 110" className="w-full h-full">
-        <defs>
-          <linearGradient id="gaugeGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" stopColor={grad[0]} />
-            <stop offset="100%" stopColor={grad[1]} />
-          </linearGradient>
-        </defs>
-        <path d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="#1E2436" strokeWidth="14" strokeLinecap="round" />
-        <path
-          d="M 20 100 A 80 80 0 0 1 180 100"
-          fill="none"
-          stroke="url(#gaugeGrad)"
-          strokeWidth="14"
-          strokeLinecap="round"
-          strokeDasharray={circumference}
-          strokeDashoffset={offset}
-          style={{ transition: "stroke-dashoffset 1s cubic-bezier(0.16, 1, 0.3, 1)", filter: "drop-shadow(0 0 8px rgba(34,211,238,0.4))" }}
-        />
-      </svg>
-      <div className="absolute inset-x-0 bottom-0 flex flex-col items-center">
-        <span className="font-mono text-4xl font-bold text-white">{score}</span>
-        <span className="text-xs text-slate-500 tracking-widest">TRUST SCORE</span>
+    <svg width="0" height="0" style={{ position: "absolute" }} aria-hidden="true">
+      <filter id="inkRoughen">
+        <feTurbulence type="fractalNoise" baseFrequency="0.012 0.09" numOctaves="2" seed="4" result="noise" />
+        <feDisplacementMap in="SourceGraphic" in2="noise" scale="2.4" />
+      </filter>
+    </svg>
+  );
+}
+
+function VerdictStamp({ tone }) {
+  const { ink, label } = TONES[tone];
+  return (
+    <div
+      className="absolute -top-4 right-4 sm:right-8 select-none"
+      style={{ transform: "rotate(-7deg)", filter: "url(#inkRoughen)" }}
+    >
+      <div
+        className="px-4 py-2 rounded-sm"
+        style={{
+          border: `3px double ${ink}`,
+          color: ink,
+          fontFamily: displayFont,
+          fontWeight: 600,
+          fontSize: "1.05rem",
+          letterSpacing: "0.06em",
+          textTransform: "uppercase",
+          background: "rgba(251,248,239,0.4)",
+        }}
+      >
+        {label}
       </div>
     </div>
+  );
+}
+
+function TrustMeter({ score, tone }) {
+  const { ink } = TONES[tone];
+  const ticks = Array.from({ length: 11 }, (_, i) => i * 10);
+
+  if (score === null || score === undefined) {
+    return (
+      <div className="mt-1">
+        <div className="flex items-baseline justify-between mb-2">
+          <span
+            className="text-xs tracking-widest"
+            style={{ fontFamily: monoFont, color: TOKENS.inkMuted, letterSpacing: "0.15em" }}
+          >
+            TRUST INDEX
+          </span>
+          <span style={{ fontFamily: monoFont, color: ink, fontWeight: 600, fontSize: "1.1rem" }}>
+            N/A
+          </span>
+        </div>
+        <div className="relative h-2.5 rounded-full" style={{ background: "#E4DCC4" }} />
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-1">
+      <div className="flex items-baseline justify-between mb-2">
+        <span
+          className="text-xs tracking-widest"
+          style={{ fontFamily: monoFont, color: TOKENS.inkMuted, letterSpacing: "0.15em" }}
+        >
+          TRUST INDEX
+        </span>
+        <span style={{ fontFamily: monoFont, color: ink, fontWeight: 600, fontSize: "1.1rem" }}>
+          {score}
+          <span style={{ color: TOKENS.inkMuted, fontWeight: 400 }}>/100</span>
+        </span>
+      </div>
+      <div className="relative h-2.5 rounded-full" style={{ background: "#E4DCC4" }}>
+        <div
+          className="absolute inset-y-0 left-0 rounded-full"
+          style={{ width: `${score}%`, background: ink, transition: "width 0.8s cubic-bezier(0.16,1,0.3,1)" }}
+        />
+      </div>
+      <div className="flex justify-between mt-1">
+        {ticks.map((t) => (
+          <span key={t} className="w-px h-1.5" style={{ background: TOKENS.line }} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SignalMark({ ok }) {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" className="flex-shrink-0 mt-[3px]">
+      {ok ? (
+        <path
+          d="M2 7.5 L5.5 11 L12 3"
+          fill="none"
+          stroke={TOKENS.verified}
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      ) : (
+        <>
+          <path d="M2.5 2.5 L11.5 11.5" stroke={TOKENS.danger} strokeWidth="2" strokeLinecap="round" />
+          <path d="M11.5 2.5 L2.5 11.5" stroke={TOKENS.danger} strokeWidth="2" strokeLinecap="round" />
+        </>
+      )}
+    </svg>
   );
 }
 
@@ -68,7 +166,7 @@ export default function TrustHire() {
       return;
     }
     if (mode === "text" && input.trim().length < 40) {
-      setError("That's too short to analyze. Paste the full job description, not just a fragment.");
+      setError("That's too short to review. Paste the full job description, not just a fragment.");
       return;
     }
     if (mode === "url") {
@@ -109,61 +207,83 @@ export default function TrustHire() {
     }
   };
 
-  const tone = result ? TONES[result.tone] : null;
-  const Icon = tone?.icon;
-
   return (
-    <div className="min-h-screen w-full bg-[#05070D] relative overflow-hidden flex flex-col items-center px-6 py-20">
-      <div
-        className="absolute top-[-200px] left-1/2 -translate-x-1/2 w-[700px] h-[500px] rounded-full opacity-40 blur-[100px] pointer-events-none"
-        style={{ background: "radial-gradient(circle, #2563EB 0%, transparent 70%)" }}
-      />
-      <div
-        className="absolute top-[100px] left-1/2 -translate-x-[65%] w-[400px] h-[400px] rounded-full opacity-30 blur-[90px] pointer-events-none"
-        style={{ background: "radial-gradient(circle, #06B6D4 0%, transparent 70%)" }}
-      />
+    <div
+      className="min-h-screen w-full flex flex-col items-center px-6 py-20"
+      style={{ background: TOKENS.paper, backgroundImage: GRAIN_BG }}
+    >
+      <StampFilter />
 
       <div className="w-full max-w-xl relative z-10">
-        <div className="flex flex-col items-center text-center mb-10">
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-white/10 bg-white/5 backdrop-blur-sm mb-6">
-            <Shield size={13} className="text-cyan-400" />
-            <span className="text-xs font-medium text-slate-300 tracking-wide">AI-powered listing verification</span>
-          </div>
-          <h1 className="text-4xl sm:text-5xl font-semibold text-white mb-4 tracking-tight" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
-            Is this job real?
+        <div className="flex items-center gap-3 mb-8">
+          <span
+            className="text-[11px]"
+            style={{ fontFamily: monoFont, color: TOKENS.inkMuted, letterSpacing: "0.18em" }}
+          >
+            [ CASE FILE — LISTING REVIEW ]
+          </span>
+          <span className="flex-1 h-px" style={{ background: TOKENS.line }} />
+        </div>
+
+        <div className="mb-10">
+          <h1
+            className="text-4xl sm:text-[2.75rem] leading-[1.08] mb-4"
+            style={{ fontFamily: displayFont, fontWeight: 600, color: TOKENS.ink }}
+          >
+            Before you apply,
+            <br />
+            get it verified.
           </h1>
-          <p className="text-slate-400 text-base max-w-sm">
-            Submit a listing URL or description. TrustHire flags the patterns most job scams share.
+          <p
+            className="text-base max-w-md leading-relaxed"
+            style={{ fontFamily: bodyFont, color: TOKENS.inkMuted }}
+          >
+            Paste a listing or its link. TrustHire cross-checks it against the patterns real scams leave behind — vague pay, no real company, requests for personal information up front.
           </p>
         </div>
 
-        <div className="rounded-2xl border border-white/10 bg-white/[0.03] backdrop-blur-xl p-6 shadow-2xl">
-          <div className="flex gap-1 mb-4 bg-white/5 p-1 rounded-lg w-fit border border-white/5">
-            <button
-              onClick={() => setMode("url")}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition ${
-                mode === "url" ? "bg-white/10 text-white" : "text-slate-500"
-              }`}
-            >
-              <Link2 size={15} /> URL
-            </button>
-            <button
-              onClick={() => setMode("text")}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition ${
-                mode === "text" ? "bg-white/10 text-white" : "text-slate-500"
-              }`}
-            >
-              <FileText size={15} /> Paste text
-            </button>
+        <div
+          className="rounded-sm p-6"
+          style={{ background: TOKENS.paperCard, border: `1px solid ${TOKENS.line}` }}
+        >
+          <div className="flex gap-6 mb-5" style={{ borderBottom: `1px solid ${TOKENS.line}` }}>
+            {[
+              { key: "url", label: "Link" },
+              { key: "text", label: "Paste text" },
+            ].map((t) => (
+              <button
+                key={t.key}
+                onClick={() => setMode(t.key)}
+                className="pb-3 text-sm transition"
+                style={{
+                  fontFamily: monoFont,
+                  letterSpacing: "0.04em",
+                  color: mode === t.key ? TOKENS.ink : TOKENS.inkMuted,
+                  fontWeight: mode === t.key ? 600 : 400,
+                  borderBottom: mode === t.key ? `2px solid ${TOKENS.ink}` : "2px solid transparent",
+                  marginBottom: "-1px",
+                }}
+              >
+                {t.label}
+              </button>
+            ))}
           </div>
 
           {mode === "url" ? (
             <input
               value={urlInput}
               onChange={(e) => setUrlInput(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") analyze(); }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") analyze();
+              }}
               placeholder="https://company.com/careers/job-listing"
-              className="w-full border border-white/10 bg-white/[0.04] rounded-lg px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500/50"
+              className="w-full rounded-sm px-4 py-3 text-sm focus:outline-none"
+              style={{
+                fontFamily: bodyFont,
+                background: TOKENS.paper,
+                border: `1px solid ${TOKENS.line}`,
+                color: TOKENS.ink,
+              }}
             />
           ) : (
             <textarea
@@ -171,62 +291,83 @@ export default function TrustHire() {
               onChange={(e) => setTextInput(e.target.value)}
               placeholder="Paste the full job description here..."
               rows={5}
-              className="w-full border border-white/10 bg-white/[0.04] rounded-lg px-4 py-3 text-sm text-white placeholder-slate-500 resize-none focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500/50"
+              className="w-full rounded-sm px-4 py-3 text-sm resize-none focus:outline-none"
+              style={{
+                fontFamily: bodyFont,
+                background: TOKENS.paper,
+                border: `1px solid ${TOKENS.line}`,
+                color: TOKENS.ink,
+              }}
             />
           )}
 
           <button
             onClick={analyze}
             disabled={loading || !(mode === "url" ? urlInput : textInput).trim()}
-            className="mt-4 w-full flex items-center justify-center gap-2 text-white font-semibold py-3 rounded-lg transition disabled:opacity-30 hover:brightness-110"
-            style={{ background: "linear-gradient(90deg,#2563EB,#06B6D4)", boxShadow: "0 0 24px rgba(37,99,235,0.35)" }}
+            className="mt-4 w-full py-3 rounded-sm transition disabled:opacity-40"
+            style={{
+              fontFamily: monoFont,
+              fontWeight: 600,
+              letterSpacing: "0.06em",
+              background: TOKENS.ink,
+              color: TOKENS.paperCard,
+            }}
           >
-            {loading ? (
-              <>
-                <Loader2 size={16} className="animate-spin" /> Analyzing
-              </>
-            ) : (
-              <>
-                Check authenticity <ArrowRight size={16} />
-              </>
-            )}
+            {loading ? "REVIEWING…" : "RUN VERIFICATION →"}
           </button>
         </div>
 
         {error && (
-          <div className="mt-6 rounded-2xl border border-rose-500/20 bg-rose-500/[0.05] backdrop-blur-xl p-4 text-sm text-rose-300 text-center">
+          <div
+            className="mt-6 rounded-sm p-4 text-sm"
+            style={{
+              fontFamily: bodyFont,
+              border: `1px solid ${TOKENS.danger}`,
+              color: TOKENS.danger,
+              background: "rgba(166,57,44,0.06)",
+            }}
+          >
             {error}
           </div>
         )}
 
         {result && (
-          <div className="mt-6 rounded-2xl border border-white/10 bg-white/[0.03] backdrop-blur-xl p-6 shadow-2xl animate-[fadeIn_0.4s_ease]">
-            <Gauge score={result.score} tone={result.tone} />
-            <div className={`flex items-center justify-center gap-2 mt-2 mb-6 ${tone.text} font-semibold`}>
-              <Icon size={18} />
-              {result.verdict}
-            </div>
-            <div className="space-y-2.5">
-              {result.signals.map((s, i) => (
-                <div key={i} className="flex items-start gap-2.5 text-sm">
-                  <span
-                    className={`mt-0.5 w-4 h-4 rounded-full flex-shrink-0 flex items-center justify-center text-[10px] font-bold ${
-                      s.ok ? "bg-emerald-500/20 text-emerald-400" : "bg-rose-500/20 text-rose-400"
-                    }`}
-                  >
-                    {s.ok ? "✓" : "!"}
-                  </span>
-                  <span className="text-slate-300">{s.text}</span>
-                </div>
-              ))}
+          <div
+            className="relative mt-8 rounded-sm p-6 pt-10 overflow-visible"
+            style={{ background: TOKENS.paperCard, border: `1px solid ${TOKENS.line}` }}
+          >
+            <VerdictStamp tone={result.tone} />
+
+            <TrustMeter score={result.score} tone={result.tone} />
+
+            <div className="mt-6 pt-5" style={{ borderTop: `1px dashed ${TOKENS.line}` }}>
+              <div
+                className="text-xs mb-3"
+                style={{ fontFamily: monoFont, color: TOKENS.inkMuted, letterSpacing: "0.12em" }}
+              >
+                FINDINGS
+              </div>
+              <div className="space-y-3">
+                {result.signals.map((s, i) => (
+                  <div key={i} className="flex items-start gap-2.5">
+                    <SignalMark ok={s.ok} />
+                    <span className="text-sm leading-snug" style={{ fontFamily: bodyFont, color: TOKENS.ink }}>
+                      {s.text}
+                    </span>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         )}
 
-        <p className="text-center text-xs text-slate-600 mt-8">
+        <p
+          className="text-center text-xs mt-10"
+          style={{ fontFamily: monoFont, color: TOKENS.inkMuted, letterSpacing: "0.04em" }}
+        >
           {result?.source === "rule-based fallback (AI analysis unavailable)"
-            ? "AI temporarily unavailable — showing rule-based analysis only."
-            : "Live analysis powered by TrustHire's detection engine."}
+            ? "AI review temporarily unavailable — showing rule-based findings only."
+            : "Every listing is checked against known scam patterns before you see a verdict."}
         </p>
       </div>
     </div>

@@ -106,6 +106,7 @@ def scrape_site(url: str) -> dict:
         domain = urlparse(url).netloc
         if domain.startswith("www."):
             domain = domain[4:]
+        data["domain"] = domain
         domain_info = whois.whois(domain)
         data["domain_created"] = str(domain_info.creation_date)
         data["registrar"] = str(domain_info.registrar)

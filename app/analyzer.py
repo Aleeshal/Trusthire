@@ -27,13 +27,16 @@ def _verdict_from_score(score):
         return "High risk"
 
 FALLBACK_MODELS = [
-    "openrouter/free",
     "meta-llama/llama-3.3-70b-instruct:free",
     "qwen/qwen-2.5-7b-instruct:free",
 ]
 
 def _call_llm(scraped_data):
-    prompt = f"""You are a job scam detector. Analyze this website data and respond with ONLY valid JSON, no markdown, no explanation outside the JSON.
+    prompt = f"""You are a careful, conservative job scam analyst. Your default assumption is that a listing is legitimate. Only flag something as a red flag if the text CONCRETELY and SPECIFICALLY supports it — never invent a generic-sounding flag just to fill the response.
+
+Do NOT flag: normal salary ranges (even wide ones), standard remote-work language, standard application instructions, or professional tone. Only flag genuine scam indicators: requests for payment or bank details, urgency pressure tactics, vague/unverifiable company identity, contact only via WhatsApp/Telegram, unrealistic pay for described role (e.g. $500/hr for entry-level), or requests for sensitive personal info (SSN, ID scans) before any interview.
+
+If the listing reads as a normal, professionally written job posting, return an empty red_flags array and a high trust_score. Do not lower the score just because information is merely brief - only lower it for concrete evidence of deception.
 
 Website data:
 Title: {scraped_data.get('title')}
@@ -41,8 +44,8 @@ Domain Created: {scraped_data.get('domain_created')}
 Registrar: {scraped_data.get('registrar')}
 Content: {scraped_data.get('text', '')[:2500]}
 
-Respond in exactly this JSON format:
-{{"trust_score": 7, "red_flags": ["flag1", "flag2"]}}"""
+Respond with ONLY valid JSON, no markdown, no explanation outside the JSON, in exactly this format:
+{{"trust_score": 7, "red_flags": ["flag1 with brief quoted evidence"]}}"""
 
     last_error = None
     for model in FALLBACK_MODELS:
@@ -56,7 +59,7 @@ Respond in exactly this JSON format:
                 json={
                     "model": model,
                     "messages": [{"role": "user", "content": prompt}],
-                    "temperature": 0.2,
+                    "temperature": 0,
                     "max_tokens": 600,
                     "reasoning": {"enabled": False},
                 },
@@ -92,6 +95,20 @@ Respond in exactly this JSON format:
     return {"error": last_error or "All fallback models failed"}
 
 def analyze_site(scraped_data):
+    # If there's essentially nothing to read - no content and no domain info -
+    # this isn't a low-trust listing, it's an unreadable page. Say that plainly
+    # instead of scoring it like a real scam.
+    has_content = len(scraped_data.get("text", "").strip()) >= 50
+    if not has_content:
+        return {
+            "trust_score": None,
+            "verdict": "Could not verify",
+            "signals": [
+                {"ok": False, "text": "No readable content found at this URL — it may be a search page, require login, or block automated access rather than being a specific job listing."}
+            ],
+            "source": "insufficient data",
+        }
+
     rule_signals = generate_signals(scraped_data)
     llm_result = _call_llm(scraped_data)
 
@@ -111,7 +128,7 @@ def analyze_site(scraped_data):
     rule_passed = sum(1 for s in rule_signals if s["ok"])
     rule_total = max(len(rule_signals), 1)
     rule_score = (rule_passed / rule_total) * 100
-    final_score = round((llm_score * 0.5) + (rule_score * 0.5))
+    final_score = round((llm_score * 0.35) + (rule_score * 0.65))
 
     combined_signals = rule_signals + [
         {"ok": False, "text": flag} for flag in llm_result.get("red_flags", [])
