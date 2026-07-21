@@ -1,5 +1,25 @@
 @import "tailwindcss";
 
+:root {
+  --paper: #F1ECDD;
+  --paper-card: #FBF8EF;
+  --ink: #211C13;
+  --ink-muted: #746B58;
+  --line: #CBC0A1;
+  --track: #E4DCC4;
+  --stamp-bg: color-mix(in srgb, var(--paper-card) 45%, transparent);
+}
+
+.dark {
+  --paper: #17130E;
+  --paper-card: #241D15;
+  --ink: #F3EDE1;
+  --ink-muted: #A69A80;
+  --line: #55492F;
+  --track: #362F21;
+  --stamp-bg: color-mix(in srgb, var(--paper-card) 45%, transparent);
+}
+
 @keyframes fadeInUp {
   from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: translateY(0); }

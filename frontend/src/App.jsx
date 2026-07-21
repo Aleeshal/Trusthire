@@ -1,11 +1,13 @@
 import { useState, useEffect, useRef } from "react";
 
 const TOKENS = {
-  paper: "#F1ECDD",
-  paperCard: "#FBF8EF",
-  ink: "#211C13",
-  inkMuted: "#746B58",
-  line: "#CBC0A1",
+  paper: "var(--paper)",
+  paperCard: "var(--paper-card)",
+  ink: "var(--ink)",
+  inkMuted: "var(--ink-muted)",
+  line: "var(--line)",
+  track: "var(--track)",
+  stampBg: "var(--stamp-bg)",
   verified: "#2F6B4F",
   caution: "#A9762E",
   danger: "#A6392C",
@@ -66,16 +68,17 @@ function VerdictStamp({ tone }) {
       }}
     >
       <div
-        className="px-4 py-2 rounded-sm"
+        className="px-5 py-2.5 rounded-sm"
         style={{
           border: `3px double ${ink}`,
           color: ink,
           fontFamily: displayFont,
           fontWeight: 600,
-          fontSize: "1.05rem",
+          fontSize: "1.15rem",
           letterSpacing: "0.06em",
           textTransform: "uppercase",
-          background: "rgba(251,248,239,0.4)",
+          background: TOKENS.stampBg,
+          boxShadow: "2px 4px 10px rgba(0,0,0,0.12)",
         }}
       >
         {label}
@@ -124,32 +127,32 @@ function TrustMeter({ score, tone }) {
             N/A
           </span>
         </div>
-        <div className="relative h-2.5 rounded-full" style={{ background: "#E4DCC4" }} />
+        <div className="relative h-2.5 rounded-full" style={{ background: TOKENS.track }} />
       </div>
     );
   }
 
   return (
-    <div className="mt-1">
-      <div className="flex items-baseline justify-between mb-2">
+    <div className="mt-2">
+      <div className="flex items-baseline justify-between mb-2.5">
         <span
           className="text-xs tracking-widest"
           style={{ fontFamily: monoFont, color: TOKENS.inkMuted, letterSpacing: "0.15em" }}
         >
           TRUST INDEX
         </span>
-        <span style={{ fontFamily: monoFont, color: ink, fontWeight: 600, fontSize: "1.1rem" }}>
+        <span style={{ fontFamily: monoFont, color: ink, fontWeight: 700, fontSize: "1.6rem" }}>
           {displayScore}
-          <span style={{ color: TOKENS.inkMuted, fontWeight: 400 }}>/100</span>
+          <span style={{ color: TOKENS.inkMuted, fontWeight: 400, fontSize: "1rem" }}>/100</span>
         </span>
       </div>
-      <div className="relative h-2.5 rounded-full" style={{ background: "#E4DCC4" }}>
+      <div className="relative h-3.5 rounded-full" style={{ background: TOKENS.track }}>
         <div
           className="absolute inset-y-0 left-0 rounded-full"
           style={{ width: `${displayScore}%`, background: ink, transition: "width 0.05s linear" }}
         />
       </div>
-      <div className="flex justify-between mt-1">
+      <div className="flex justify-between mt-1.5">
         {ticks.map((t) => (
           <span key={t} className="w-px h-1.5" style={{ background: TOKENS.line }} />
         ))}
@@ -181,28 +184,21 @@ function SignalMark({ ok }) {
 }
 
 export default function TrustHire() {
-
-  const [theme, setTheme] = useState(() => {
-    return localStorage.getItem("theme") || "light";
-  });
-
   const [mode, setMode] = useState("url");
   const [urlInput, setUrlInput] = useState("");
   const [textInput, setTextInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
-
-  
+  const [dark, setDark] = useState(() => {
+    const stored = localStorage.getItem("trusthire-theme");
+    if (stored) return stored === "dark";
+    return window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? false;
+  });
 
   useEffect(() => {
-  localStorage.setItem("theme", theme);
-  }, [theme]);
-
-
-  const toggleTheme = () => {
-  setTheme(current => current === "light" ? "dark" : "light");
-  };
+    localStorage.setItem("trusthire-theme", dark ? "dark" : "light");
+  }, [dark]);
 
   const analyze = async () => {
     const input = mode === "url" ? urlInput : textInput;
@@ -259,7 +255,7 @@ export default function TrustHire() {
 
   return (
     <div
-      className="min-h-screen w-full"
+      className={`min-h-screen w-full transition-colors duration-300 ${dark ? "dark" : ""}`}
       style={{ background: TOKENS.paper, backgroundImage: GRAIN_BG }}
     >
       <StampFilter />
@@ -268,33 +264,33 @@ export default function TrustHire() {
         className="w-full px-6 sm:px-10 py-5 flex items-center justify-between"
         style={{ borderBottom: `1px solid ${TOKENS.line}` }}
       >
-      
-      <div className="flex items-center gap-4">
-
-     <button
-      onClick={toggleTheme}
-      style={{
-      border: "none",
-      background: "transparent",
-      cursor: "pointer",
-      fontSize: "18px"
-      }}
-  >
-      {theme === "light" ? "🌙" : "☀️"}
-      </button>
-
-      <span
-      className="text-[11px] hidden sm:inline"
-      style={{
-      fontFamily: monoFont,
-      color: TOKENS.inkMuted,
-      letterSpacing: "0.16em"
-      }}
-      >
-      [ CASE FILE — LISTING REVIEW ]
-      </span>
-
-      </div>
+        <span
+          style={{ fontFamily: monoFont, color: TOKENS.ink, fontWeight: 600, letterSpacing: "0.08em", fontSize: "0.95rem" }}
+        >
+          TRUSTHIRE
+        </span>
+        <div className="flex items-center gap-5">
+          <span
+            className="text-[11px] hidden sm:inline"
+            style={{ fontFamily: monoFont, color: TOKENS.ink, fontWeight: 600, letterSpacing: "0.16em" }}
+          >
+            [ CASE FILE — LISTING REVIEW ]
+          </span>
+          <button
+            onClick={() => setDark((d) => !d)}
+            aria-label="Toggle dark mode"
+            className="text-[11px] px-2.5 py-1 rounded-sm transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+            style={{
+              fontFamily: monoFont,
+              letterSpacing: "0.1em",
+              color: TOKENS.ink,
+              border: `1px solid ${TOKENS.line}`,
+              outlineColor: TOKENS.ink,
+            }}
+          >
+            {dark ? "LIGHT" : "DARK"}
+          </button>
+        </div>
       </header>
 
       <main className="w-full max-w-6xl mx-auto px-6 sm:px-10 py-16 sm:py-20 grid grid-cols-1 md:grid-cols-[0.75fr_1fr] gap-12 md:gap-16">
@@ -318,7 +314,7 @@ export default function TrustHire() {
         <div className="min-w-0">
           <div
             className="rounded-sm p-6"
-            style={{ background: TOKENS.paperCard, border: `1px solid ${TOKENS.line}` }}
+            style={{ background: TOKENS.paperCard, border: `1px solid ${TOKENS.line}`, boxShadow: "0 12px 32px rgba(0,0,0,0.06)" }}
           >
             <div className="flex gap-6 mb-5" style={{ borderBottom: `1px solid ${TOKENS.line}` }}>
               {[
@@ -401,7 +397,7 @@ export default function TrustHire() {
 
             <p
               className="text-center text-[13px] mt-5 sm:mt-4 leading-relaxed"
-              style={{ fontFamily: monoFont, color: TOKENS.inkMuted }}
+              style={{ fontFamily: monoFont, color: TOKENS.ink, fontWeight: 500 }}
             >
               {result?.source === "rule-based fallback (AI analysis unavailable)"
                 ? "AI review temporarily unavailable — showing rule-based findings only."
@@ -426,7 +422,7 @@ export default function TrustHire() {
           {result && (
             <div
               className="relative mt-8 rounded-sm p-6 pt-10 overflow-visible"
-              style={{ background: TOKENS.paperCard, border: `1px solid ${TOKENS.line}` }}
+              style={{ background: TOKENS.paperCard, border: `1px solid ${TOKENS.line}`, boxShadow: "0 12px 32px rgba(0,0,0,0.06)" }}
             >
               <div className="flex items-baseline justify-between mb-1">
                 <span
@@ -447,30 +443,7 @@ export default function TrustHire() {
 
               <TrustMeter score={result.score} tone={result.tone} />
 
-              <div className="mt-6 pt-5" style={{ borderTop: `1px dashed ${TOKENS.line}` }}>
-                <div
-                  className="text-xs mb-3"
-                  style={{ fontFamily: monoFont, color: TOKENS.inkMuted, letterSpacing: "0.12em" }}
-                >
-                  FINDINGS
-                </div>
-                <div className="space-y-3">
-                  {result.signals.map((s, i) => (
-                    <div
-                      key={i}
-                      className="flex items-start gap-2.5"
-                      style={{ animation: `fadeInUp 0.4s ease-out ${i * 70}ms both` }}
-                    >
-                      <SignalMark ok={s.ok} />
-                      <span className="text-sm leading-snug" style={{ fontFamily: bodyFont, color: TOKENS.ink }}>
-                        {s.text}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="mt-6 pt-5" style={{ borderTop: `1px dashed ${TOKENS.line}` }}>
+              <div className="mt-7 pt-6" style={{ borderTop: `1px dashed ${TOKENS.line}` }}>
                 <div
                   className="text-xs mb-2"
                   style={{ fontFamily: monoFont, color: TOKENS.inkMuted, letterSpacing: "0.12em" }}
@@ -481,6 +454,56 @@ export default function TrustHire() {
                   {RECOMMENDATIONS[result.tone]}
                 </p>
               </div>
+
+              {result.signals.filter((s) => s.ok).length > 0 && (
+                <div className="mt-7 pt-6" style={{ borderTop: `1px dashed ${TOKENS.line}` }}>
+                  <div
+                    className="text-xs mb-3"
+                    style={{ fontFamily: monoFont, color: TOKENS.inkMuted, letterSpacing: "0.12em" }}
+                  >
+                    POSITIVE SIGNALS
+                  </div>
+                  <div className="space-y-3">
+                    {result.signals.filter((s) => s.ok).map((s, i) => (
+                      <div
+                        key={i}
+                        className="flex items-start gap-2.5"
+                        style={{ animation: `fadeInUp 0.4s ease-out ${i * 70}ms both` }}
+                      >
+                        <SignalMark ok={s.ok} />
+                        <span className="text-sm leading-snug" style={{ fontFamily: bodyFont, color: TOKENS.ink }}>
+                          {s.text}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {result.signals.filter((s) => !s.ok).length > 0 && (
+                <div className="mt-7 pt-6" style={{ borderTop: `1px dashed ${TOKENS.line}` }}>
+                  <div
+                    className="text-xs mb-3"
+                    style={{ fontFamily: monoFont, color: TOKENS.inkMuted, letterSpacing: "0.12em" }}
+                  >
+                    WARNINGS
+                  </div>
+                  <div className="space-y-3">
+                    {result.signals.filter((s) => !s.ok).map((s, i) => (
+                      <div
+                        key={i}
+                        className="flex items-start gap-2.5"
+                        style={{ animation: `fadeInUp 0.4s ease-out ${i * 70}ms both` }}
+                      >
+                        <SignalMark ok={s.ok} />
+                        <span className="text-sm leading-snug" style={{ fontFamily: bodyFont, color: TOKENS.ink }}>
+                          {s.text}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
