@@ -26,9 +26,9 @@ def _verdict_from_score(score):
     else:
         return "High risk"
 
-FALLBACK_MODELS = [
-    "meta-llama/llama-3.3-70b-instruct:free",
-    "qwen/qwen-2.5-7b-instruct:free",
+GEMINI_MODELS = [
+    "gemini-3.5-flash-lite",  # newest GA lite model as of July 2026 - primary
+    "gemini-2.5-flash-lite",  # still stable/documented - backup
 ]
 
 def _call_llm(scraped_data):
@@ -38,6 +38,8 @@ Do NOT flag: normal salary ranges (even wide ones), standard remote-work languag
 
 If the listing reads as a normal, professionally written job posting, return an empty red_flags array and a high trust_score. Do not lower the score just because information is merely brief - only lower it for concrete evidence of deception.
 
+trust_score must be an integer from 0 to 100 (0 = certain scam, 100 = fully trustworthy). Do not use any other scale.
+
 Website data:
 Title: {scraped_data.get('title')}
 Domain Created: {scraped_data.get('domain_created')}
@@ -45,54 +47,78 @@ Registrar: {scraped_data.get('registrar')}
 Content: {scraped_data.get('text', '')[:2500]}
 
 Respond with ONLY valid JSON, no markdown, no explanation outside the JSON, in exactly this format:
-{{"trust_score": 7, "red_flags": ["flag1 with brief quoted evidence"]}}"""
+{{"trust_score": 7, "summary": "2-3 sentence plain-language explanation of why you scored it this way, written for the job seeker reading it", "red_flags": ["flag1 with brief quoted evidence"]}}"""
 
-    last_error = None
-    for model in FALLBACK_MODELS:
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        return {"error": "GEMINI_API_KEY is not set in the environment"}
+
+    errors = []
+    rate_limited_count = 0
+    attempted = 0
+    for model in GEMINI_MODELS:
+        attempted += 1
         try:
             response = requests.post(
-                "https://openrouter.ai/api/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {os.getenv('OPENROUTER_API_KEY')}",
-                    "Content-Type": "application/json",
-                },
+                f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
+                headers={"Content-Type": "application/json"},
+                params={"key": api_key},
                 json={
-                    "model": model,
-                    "messages": [{"role": "user", "content": prompt}],
-                    "temperature": 0,
-                    "max_tokens": 600,
-                    "reasoning": {"enabled": False},
+                    "contents": [{"parts": [{"text": prompt}]}],
+                    "generationConfig": {
+                        "temperature": 0,
+                        "maxOutputTokens": 600,
+                        "responseMimeType": "application/json",
+                        "responseSchema": {
+                            "type": "OBJECT",
+                            "properties": {
+                                "trust_score": {"type": "INTEGER", "description": "Integer from 0 to 100. 0 means certain scam, 100 means fully trustworthy."},
+                                "summary": {"type": "STRING"},
+                                "red_flags": {"type": "ARRAY", "items": {"type": "STRING"}},
+                            },
+                            "required": ["trust_score", "summary", "red_flags"],
+                        },
+                    },
                 },
                 timeout=20,
             )
         except requests.RequestException as e:
-            last_error = f"Network error calling OpenRouter ({model}): {e}"
+            errors.append(f"Network error ({model}): {e}")
             continue
 
-        # 429 (rate-limited) or 5xx means this specific model/provider is
-        # unavailable right now - move on to the next candidate instead of
-        # giving up on AI analysis entirely.
-        if response.status_code == 429 or response.status_code >= 500:
-            last_error = f"OpenRouter returned status {response.status_code} for {model}: {response.text[:200]}"
+        if response.status_code == 429:
+            rate_limited_count += 1
+            errors.append(f"429 rate-limited ({model})")
+            continue
+
+        if response.status_code >= 500:
+            errors.append(f"status {response.status_code} ({model}): {response.text[:150]}")
             continue
 
         if response.status_code != 200:
-            last_error = f"OpenRouter returned status {response.status_code} for {model}: {response.text[:300]}"
+            errors.append(f"status {response.status_code} ({model}): {response.text[:150]}")
             continue
 
         result = response.json()
-        if "choices" not in result:
-            last_error = f"Unexpected OpenRouter response for {model}: {result}"
+        candidates = result.get("candidates", [])
+        if not candidates:
+            # Can happen if the safety filter blocked the response entirely.
+            block_reason = result.get("promptFeedback", {}).get("blockReason", "unknown")
+            errors.append(f"no candidates ({model}), reason: {block_reason}")
             continue
 
-        content = result["choices"][0]["message"].get("content", "")
+        parts = candidates[0].get("content", {}).get("parts", [])
+        content = parts[0].get("text", "") if parts else ""
         try:
             return _extract_json(content)
         except (json.JSONDecodeError, AttributeError) as e:
-            last_error = f"Could not parse LLM output as JSON ({model}): {e}"
+            errors.append(f"bad JSON ({model}): {e}")
             continue
 
-    return {"error": last_error or "All fallback models failed"}
+    if rate_limited_count == attempted and attempted > 0:
+        return {"error": "Gemini free-tier daily quota exhausted for all models. This resets daily."}
+
+    return {"error": "; ".join(errors) if errors else "All Gemini models failed"}
 
 def analyze_site(scraped_data):
     # If there's essentially nothing to read - no content and no domain info -
@@ -124,11 +150,13 @@ def analyze_site(scraped_data):
             "source": "rule-based fallback (AI analysis unavailable)",
         }
 
-    llm_score = llm_result.get("trust_score", 5) * 10
+    print(f"[DEBUG] Parsed Gemini result: {llm_result}")
+
+    llm_score = max(0, min(100, llm_result.get("trust_score", 50)))
     rule_passed = sum(1 for s in rule_signals if s["ok"])
     rule_total = max(len(rule_signals), 1)
     rule_score = (rule_passed / rule_total) * 100
-    final_score = round((llm_score * 0.35) + (rule_score * 0.65))
+    final_score = max(0, min(100, round((llm_score * 0.35) + (rule_score * 0.65))))
 
     combined_signals = rule_signals + [
         {"ok": False, "text": flag} for flag in llm_result.get("red_flags", [])
@@ -138,5 +166,6 @@ def analyze_site(scraped_data):
         "trust_score": final_score,
         "verdict": _verdict_from_score(final_score),
         "signals": combined_signals,
+        "ai_summary": llm_result.get("summary"),
         "source": "AI + rule-based analysis",
     }

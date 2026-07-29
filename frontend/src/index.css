@@ -6,18 +6,29 @@
   --ink: #211C13;
   --ink-muted: #746B58;
   --line: #CBC0A1;
+  --line-bright: #A99C78;
   --track: #E4DCC4;
   --stamp-bg: color-mix(in srgb, var(--paper-card) 45%, transparent);
+  --cta: #6B4A2B;
+  --cta-hover: #57391F;
 }
 
 .dark {
-  --paper: #17130E;
-  --paper-card: #241D15;
-  --ink: #F3EDE1;
-  --ink-muted: #A69A80;
-  --line: #55492F;
-  --track: #362F21;
+  --paper: #14110C;
+  --paper-card: #262016;
+  --ink: #F5EFE3;
+  --ink-muted: #ADA187;
+  --line: #5C4F32;
+  --line-bright: #7A6A43;
+  --track: #3A3121;
   --stamp-bg: color-mix(in srgb, var(--paper-card) 45%, transparent);
+  --cta: #8A5A34;
+  --cta-hover: #9C6A3E;
+}
+
+::placeholder {
+  color: var(--ink-muted);
+  opacity: 0.9;
 }
 
 @keyframes fadeInUp {
@@ -29,6 +40,11 @@
   0% { opacity: 0; transform: rotate(-7deg) scale(1.4); }
   60% { opacity: 1; transform: rotate(-7deg) scale(0.94); }
   100% { opacity: 1; transform: rotate(-7deg) scale(1); }
+}
+
+@keyframes pulseDot {
+  0%, 100% { opacity: 0.3; transform: translateY(0); }
+  50% { opacity: 1; transform: translateY(-2px); }
 }
 
 @media (prefers-reduced-motion: reduce) {

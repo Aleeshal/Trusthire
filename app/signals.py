@@ -12,7 +12,9 @@ def check_domain_age(domain_created_str, has_url):
     if not has_url:
         return None
     if not domain_created_str or domain_created_str in ("None", "null"):
-        return {"ok": False, "text": "Could not determine domain registration date"}
+        # Genuinely unknown (lookup failed/unsupported for this domain) is
+        # not evidence of anything - don't penalize the score for it.
+        return None
     try:
         date_str = domain_created_str.strip("[]").split(",")[0].strip().strip("'\"")
         if "T" in date_str:
@@ -30,7 +32,9 @@ def check_domain_age(domain_created_str, has_url):
             years = age_days // 365
             return {"ok": True, "text": f"Domain registered over {years if years else '<1'} year(s) ago"}
     except Exception:
-        return {"ok": False, "text": "Could not parse domain registration date"}
+        # Same reasoning - a parse failure means we don't know, not that
+        # something's wrong.
+        return None
 
 def check_scam_keywords(text):
     if not text:
